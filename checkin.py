@@ -1,10 +1,7 @@
 import requests
 import json
 import os
-import smtplib
 import logging
-from email.mime.text import MIMEText
-from email.utils import formataddr
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass, asdict
@@ -101,8 +98,6 @@ class Config:
     ENV_COOKIES = "GLADOS_COOKIES"
     ENV_EXCHANGE_PLAN = "GLADOS_EXCHANGE_PLAN"
     ENV_VERBOSE = "GLADOS_VERBOSE"
-    ENV_EMAIL_USER = "EMAIL_USER"
-    ENV_EMAIL_PASSWORD = "EMAIL_PASSWORD"
 
     """默认兑换计划（none 表示不自动兑换）"""
     DEFAULT_EXCHANGE_PLAN = "none"
@@ -122,8 +117,6 @@ class Config:
 
     def __init__(self):
         self.push_key: str = ""
-        self.email_user: str = ""
-        self.email_password: str = ""
         self.cookies_list: List[str] = []
         self.exchange_plan: str = self.DEFAULT_EXCHANGE_PLAN
         self.verbose: bool = self.DEFAULT_VERBOSE
@@ -141,16 +134,6 @@ class Config:
             self.push_key = ""
         else:
             self.push_key = push_key_env
-
-        email_user_env: Optional[str] = os.environ.get(self.ENV_EMAIL_USER)
-        email_password_env: Optional[str] = os.environ.get(self.ENV_EMAIL_PASSWORD)
-        if not (email_user_env and email_password_env):
-            logger.warning(f"{LogEmoji.WARNING} 环境变量 '{self.ENV_EMAIL_USER}' / '{self.ENV_EMAIL_PASSWORD}' 未设置，跳过邮件推送。")
-            self.email_user = ""
-            self.email_password = ""
-        else:
-            self.email_user = email_user_env.strip()
-            self.email_password = email_password_env.strip()
 
         if not raw_cookies_env:
             logger.warning(f"{LogEmoji.WARNING} 环境变量 '{self.ENV_COOKIES}' 未设置。")
@@ -173,7 +156,6 @@ class Config:
 
         logger.info(f"{LogEmoji.INFO} 共加载了 {len(self.cookies_list)} 个 Cookie 用于签到。")
         logger.info(f"{LogEmoji.INFO} 当前 {self.ENV_PUSH_KEY} {'已设置' if push_key_env else '未设置'}。")
-        logger.info(f"{LogEmoji.INFO} 当前邮件推送 {'已设置' if self.email_user else '未设置'}。")
         logger.info(f"{LogEmoji.INFO} 当前 {self.ENV_EXCHANGE_PLAN}: {self.exchange_plan}。")
 
         if verbose_env is not None:
@@ -430,26 +412,6 @@ class PushService:
             return False
 
 
-def notify_email(config: Config, subject: str, body: str) -> bool:
-    """通过 QQ 邮箱 SMTP_SSL(465) 推送；EMAIL_USER 和 EMAIL_PASSWORD 都配置才发送，
-    失败静默打印，不影响签到主流程。"""
-    if not (config.email_user and config.email_password):
-        return False
-    try:
-        msg = MIMEText(body, "plain", "utf-8")
-        msg["From"] = formataddr(("GLaDOS签到助手", config.email_user))
-        msg["To"] = config.email_user
-        msg["Subject"] = subject
-        with smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=15) as smtp:
-            smtp.login(config.email_user, config.email_password)
-            smtp.sendmail(config.email_user, [config.email_user], msg.as_string())
-        logger.info(f"{LogEmoji.SUCCESS} 邮件推送已发送到 {config.email_user}。")
-        return True
-    except Exception as e:
-        logger.error(f"{LogEmoji.ERROR} 邮件推送失败: {e}")
-        return False
-
-
 class Checker:
     """签到"""
 
@@ -590,7 +552,6 @@ def main():
     logger.info(f"{LogEmoji.START} 步骤 4: 发送推送")
     push_service = PushService(config if "config" in locals() else "")
     push_service.send(title, content)
-    notify_email(config if "config" in locals() else Config(), title, content)
     logger.info(f"{LogEmoji.END} 签到完成")
 
 
