@@ -65,6 +65,9 @@ def send_email(subject: str, body: str) -> bool:
         return False
 
 
+SUMMARY_MARKER = "🏁 ========== 签到总结 =========="
+
+
 def beijing_now_str() -> str:
     return (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -73,12 +76,27 @@ def main():
     # 1. 运行签到脚本
     rc, stdout, stderr = run_checkin()
 
-    # 2. 合并日志（checkin.py 用 logging 写到 stderr 或 stdout 都要抓）
-    log_text = f"时间：{beijing_now_str()}\n退出码：{rc}\n\n--- checkin.py 输出 ---\n"
+    # 2. 合并日志 + 签到总结优先
+    raw = ""
     if stdout.strip():
-        log_text += stdout
+        raw += stdout
     if stderr.strip():
-        log_text += ("\n\n--- stderr ---\n" if stdout.strip() else "") + stderr
+        raw += ("\n\n--- stderr ---\n" if stdout.strip() else "") + stderr
+
+    # 2a. 把签到总结块提到最前面
+    idx = raw.find(SUMMARY_MARKER)
+    if idx != -1:
+        line_start = raw.rfind("\n", 0, idx) + 1
+        summary_block = raw[line_start:]
+        before = raw[:line_start].rstrip("\n")
+        log_text = (
+            f"时间：{beijing_now_str()}\n退出码：{rc}\n\n"
+            f"--- 签到结果 ---\n{summary_block}\n\n"
+            f"--- 详细日志 ---\n{before}\n"
+        )
+    else:
+        # 脚本异常或版本差异：保持原顺序
+        log_text = f"时间：{beijing_now_str()}\n退出码：{rc}\n\n--- checkin.py 输出 ---\n{raw}"
 
     # 3. 打印到当前 stdout（青龙面板会捕获这份做运行日志）
     print(log_text)
